@@ -8,6 +8,8 @@ This toolkit contains all scripts, microcontroller firmware, ACPI DSDT research,
 
 | File | Description |
 | :--- | :--- |
+| **`docs/ARCHITECTURE_AND_THEORY.md`** | 🧠 **Deep Technical Whitepaper:** Precision Boost 2 architecture, BD PROCHOT electrical pin behavior, DSDT ASL reverse-engineering, and anti-400MHz theory. |
+| **`docs/THERMAL_AND_POWER_TUNING.md`** | 🌡️ **Tuning Guide:** Power profiles, thermal caps, cooler modding reality, and live SMU telemetry commands. |
 | **`ec_voltage_patcher.py`** | ⚡ High-speed daemon that injects exact DSDT offsets into EC RAM, locks C-states, and continuously locks the **45W Fast PPT & 65A VRM** limits to sustain **3.0+ GHz** on all cores. |
 | **`install_service.sh`** | 🛠️ One-click persistent installer: configures `/etc/modules-load.d/ec_sys.conf`, `/etc/modprobe.d/ec_sys.conf`, and registers `ec-voltage-patcher.service` in systemd to **persist across reboots**. |
 | **`uninstall_service.sh`**| 🛑 One-click uninstaller to stop, disable, and clean up the service and kernel configurations. |
