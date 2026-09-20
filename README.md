@@ -51,13 +51,14 @@ If `BTDC` (0x84) or `BTDV` (0x86) are zero, `_BIX` returns an uninitialized erro
 
 By default, when running on AC without a valid OEM battery, Huawei firmware caps the Ryzen APU to an **18.0W STAPM limit**. Under combined CPU and GPU workloads (e.g. BOINC), this starves the CPU, locking cores to ~2.1 GHz.
 
-The patcher uses `ryzenadj` to override the SMU power table every 5 seconds:
-* **STAPM Limit:** Raised from `18W` ➔ **`45W`**
-* **Fast PPT Limit:** Raised from `30W` ➔ **`45W`**
-* **Slow PPT Limit:** Raised from `25W` ➔ **`45W`**
+The patcher uses `ryzenadj` to override the SMU power table every 3 seconds:
+* **STAPM Limit:** Raised from `18W` ➔ **`35W`** (sustained continuous compute)
+* **Fast PPT Limit:** Raised from `30W` ➔ **`40W`** (burst compute budget)
+* **Slow PPT Limit:** Raised from `25W` ➔ **`35W`**
 * **VRM Max Current (EDC):** Raised from `45A` ➔ **`65A`** (unlocks core electrical clamp)
 * **VRM Current (TDC):** Raised from `35A` ➔ **`50A`**
-* **Thermal Limit (Tctl):** Set to **`95°C`** (typical operating temperature stays cool at ~72°C)
+* **Thermal Limit (Tctl):** Set to **`85°C`** (20°C safety margin below 105°C Tjmax to protect VRMs)
+* **PROCHOT Deassertion Ramp:** Set to **`1`** (collapses 400 MHz recovery from 30 seconds to 1 millisecond)
 
 **Result:** All 8 CPU threads boost up to **~3.0+ GHz** simultaneously, even while the Radeon Vega GPU is at 100% load.
 
