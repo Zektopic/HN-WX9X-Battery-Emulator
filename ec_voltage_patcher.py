@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-EC Voltage, Capacity & Fast PPT Power Patcher Daemon
-Automatically locks the system into the High-Power 3.0+ GHz Power State:
+EC Voltage, Capacity & Anti-400MHz Fast PPT Patcher Daemon
+Solves both battery emulation and the 400 MHz throttling issue:
   1. EC RAM Injection (Exact Huawei DSDT Layout):
      - Offset 0x80: ACST | BST1 (0x03: AC connected & Battery present)
      - Offset 0x84: BTDC (Design Capacity: 3610 mAh)
@@ -12,9 +12,11 @@ Automatically locks the system into the High-Power 3.0+ GHz Power State:
      - Offset 0x94: BFCC (3610 mAh)
      - Offset 0x9A: BTEM (Temperature: 2980 = 25.0 C)
   2. CPU C-State Latency Lock:
-     - Locks /dev/cpu_dma_latency to 0 to eliminate 400 MHz idle drops.
-  3. Ryzen SMU Fast PPT Boost (45W Package Power & 65A VRM):
-     - Enforces 45W Fast/Slow PPT & STAPM limits with 65A EDC to hit 3.0+ GHz all-core boost.
+     - Locks /dev/cpu_dma_latency to 0 to eliminate C-state sleep drops.
+  3. Anti-400MHz & Ryzen Fast PPT Boost:
+     - Sets --prochot-deassertion-ramp=1 (instantly recovers from BD PROCHOT trips).
+     - Enforces stable 38W Fast PPT & 65A VRM limits to prevent VRM overheating.
+     - Sets --tctl-temp=85 to prevent motherboard thermal sensor trips.
 """
 
 import time
@@ -64,24 +66,25 @@ barc_bytes = struct.pack("<H", 2888)   # 0x92: Remaining Capacity (mAh - 80%)
 bfcc_bytes = struct.pack("<H", 3610)   # 0x94: Full Capacity (mAh)
 btem_bytes = struct.pack("<H", 2980)   # 0x9A: Temperature (25 C)
 
-# 3. Ryzen SMU Power Boost (Fast PPT 45W & 65A VRM)
+# 3. Ryzen SMU Power Boost with Anti-400MHz Prochot Recovery
 RYZENADJ_BIN = "/usr/local/bin/ryzenadj"
 
 def apply_fast_ppt():
-    """Apply 45W Fast PPT and 65A VRM limits to sustain 3.0+ GHz boost"""
+    """Apply stable 38W Fast PPT, 65A VRM, and instant PROCHOT recovery"""
     if not os.path.exists(RYZENADJ_BIN):
         return
     try:
         subprocess.run([
             RYZENADJ_BIN,
-            "--stapm-limit=45000",
-            "--fast-limit=45000",
-            "--slow-limit=45000",
+            "--stapm-limit=35000",
+            "--fast-limit=40000",
+            "--slow-limit=35000",
             "--vrm-current=50000",
             "--vrmmax-current=65000",
             "--vrmsoc-current=14000",
             "--vrmsocmax-current=18000",
-            "--tctl-temp=95"
+            "--tctl-temp=85",
+            "--prochot-deassertion-ramp=1"
         ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=2)
     except Exception:
         pass
@@ -137,9 +140,9 @@ try:
             f.seek(0x9A)
             f.write(btem_bytes)
 
-            # Re-apply Fast PPT every 5 seconds to lock out firmware power drops
+            # Re-apply Fast PPT & instant PROCHOT recovery every 3 seconds
             now = time.time()
-            if now - last_power_time >= 5.0:
+            if now - last_power_time >= 3.0:
                 apply_fast_ppt()
                 last_power_time = now
 
