@@ -38,12 +38,19 @@ Offset   Field   Size    Description
 0x9A     BTEM    16-bit  Battery Temperature (2980 = 25.0 °C / 298.15 K)
 ```
 
-### 2. Why Earlier Patchers Failed:
+### 2. Why Earlier Patchers Failed & How to Restore `capacity` in BTOP:
 In the DSDT, the ACPI Battery Extended Info method (`_BIX`) explicitly evaluates:
 ```asl
 If (((BTDV && BTFC) && BTDC))
 ```
-If `BTDC` (0x84) or `BTDV` (0x86) are zero, `_BIX` returns an uninitialized error package. The Linux kernel then drops `energy_full` and `capacity`, causing tools like `btop` and system monitors to hide the battery. The updated patcher writes all offsets simultaneously, restoring full battery telemetry.
+If `BTDC` (0x84) or `BTDV` (0x86) are zero at boot, `_BIX` fails. The Linux kernel switches to `energy_battery_full_cap_broken_props`, omitting `energy_full` and `capacity`. Because `capacity` is missing, `btop` sets `has_battery = false` and hides the battery widget.
+
+Once the patcher daemon is actively writing the correct offsets to EC RAM, you can force the kernel to re-probe `_BIX` and restore `capacity` and `energy_full` immediately without rebooting:
+```bash
+echo -n "PNP0C0A:00" | sudo tee /sys/bus/platform/drivers/acpi-battery/unbind
+echo -n "PNP0C0A:00" | sudo tee /sys/bus/platform/drivers/acpi-battery/bind
+```
+*(With the ESP32 hardware emulator connected to SMBus, this is handled automatically before boot).*
 
 ---
 

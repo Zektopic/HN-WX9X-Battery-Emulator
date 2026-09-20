@@ -27,9 +27,12 @@ This document details the reverse engineering, firmware mechanics, silicon archi
    - Cyclic Overrides via Daemon Architecture
 6. [Why BTOP and User Space Tools Omit the Battery Indicator](#6-why-btop-and-user-space-tools-omit-the-battery-indicator)
    - ACPI Subsystem Architecture: Static `_BIX` vs. Dynamic `_BST`
-   - The Boot-Time Caching Trap
+   - Why Userspace Cannot Create Files in `/sys` (The Virtual `kernfs` Architecture)
+   - The Driver's Broken Capacity Property Table (`energy_battery_full_cap_broken_props`)
+   - The Boot-Time Caching Trap in ACPI DSDT
    - BTOP Source Inspection: Why It Drops the Battery Widget
-   - Dynamic Re-Enumeration via Hardware Emulation
+   - Software Workaround: Driver Unbind/Rebind Sequence (`PNP0C0A:00`)
+   - Hardware Solution: Permanent Resolution via ESP32 Pre-Boot Initialization
 7. [The 1 Hz EC SMBus Polling Loop & 200ms PROCHOT Pulses](#7-the-1-hz-ec-smbus-polling-loop--200ms-prochot-pulses)
    - Empirical 200ms Telemetry Findings
    - The SBS 1.1 / I2C 0x0B Timeout Cycle
@@ -222,7 +225,60 @@ The Linux kernel ACPI battery subsystem (`drivers/acpi/battery.c`) splits batter
    * Supplies dynamic state: Battery State (Charging/Discharging/Critical), Present Rate (charge/discharge current), Remaining Capacity, and Present Voltage.
    * Polled periodically (typically every 1 to 5 seconds) via `acpi_battery_get_state()`.
 
-### B. The Boot-Time Caching Trap
+### B. Why Userspace Cannot Just Create Files in `/sys` (The Virtual `kernfs` Architecture)
+A common intuitive question is: *"If the kernel didn't create `/sys/class/power_supply/BAT0/capacity`, why can't we just run `echo 80 > /sys/class/power_supply/BAT0/capacity` or `touch` the file?"*
+
+The answer lies in how Linux filesystems function:
+* `/sys` is **not a disk or RAM filesystem** (like ext4, btrfs, or tmpfs). It is an in-memory virtual filesystem (**`sysfs`**, backed by **`kernfs`**) that dynamically reflects C structs (`struct kobject`, `struct device_attribute`, `struct power_supply`) inside kernel memory.
+* Every readable file in `/sys` is actually a compiled kernel C function pointer (an `attr->show()` callback).
+* In the Virtual File System (VFS) interface of `kernfs`, the inode operations for directory nodes **do not implement `.create()` or `.mknod()`** for userspace.
+* If a userspace process (even running as `root`) attempts to create a file or symlink inside `/sys`, the VFS immediately rejects the syscall with:
+  ```text
+  touch: cannot touch '/sys/class/power_supply/BAT0/capacity': Permission denied (EACCES / EPERM)
+  ```
+* Only kernel modules and drivers calling internal kernel APIs (`sysfs_create_file()`, `device_add()`, or `power_supply_register()`) can instantiate attributes in sysfs.
+
+### C. The Driver's Broken Capacity Property Table (`energy_battery_full_cap_broken_props`)
+Inside the Linux kernel ACPI battery driver source code ([`drivers/acpi/battery.c`](file:///usr/src/linux/drivers/acpi/battery.c)), properties are registered in groups:
+
+```c
+// Normal property table when battery capacity is healthy:
+static const enum power_supply_property energy_battery_props[] = {
+    POWER_SUPPLY_PROP_STATUS,
+    POWER_SUPPLY_PROP_PRESENT,
+    POWER_SUPPLY_PROP_TECHNOLOGY,
+    POWER_SUPPLY_PROP_VOLTAGE_NOW,
+    POWER_SUPPLY_PROP_ENERGY_NOW,
+    POWER_SUPPLY_PROP_ENERGY_FULL,         // <-- Exists normally
+    POWER_SUPPLY_PROP_ENERGY_FULL_DESIGN,  // <-- Exists normally
+    POWER_SUPPLY_PROP_CAPACITY,            // <-- Exists normally
+    ...
+};
+
+// Fallback property table used when capacity reporting is invalid:
+static const enum power_supply_property energy_battery_full_cap_broken_props[] = {
+    POWER_SUPPLY_PROP_STATUS,
+    POWER_SUPPLY_PROP_PRESENT,
+    POWER_SUPPLY_PROP_TECHNOLOGY,
+    POWER_SUPPLY_PROP_VOLTAGE_NOW,
+    POWER_SUPPLY_PROP_ENERGY_NOW,
+    // CRITICAL: ENERGY_FULL, ENERGY_FULL_DESIGN, and CAPACITY ARE OMITTED!
+};
+```
+
+When `acpi_battery_add()` probes a battery device:
+1. It calls `acpi_battery_get_info()` to evaluate ACPI `_BIX`.
+2. It validates the returned values using the macro `ACPI_BATTERY_CAPACITY_VALID()`.
+3. If both `design_capacity` and `full_charge_capacity` evaluate to `0` or fail sanity checks, the driver flags the hardware as having broken capacity reporting:
+   ```c
+   if (!ACPI_BATTERY_CAPACITY_VALID(battery->full_charge_capacity) &&
+       !ACPI_BATTERY_CAPACITY_VALID(battery->design_capacity))
+       battery->flags.full_cap_broken = 1;
+   ```
+4. If `full_cap_broken` is set, the driver explicitly assigns `energy_battery_full_cap_broken_props` to `battery->bat_desc.properties`.
+5. When the power supply class creates sysfs entries for `BAT0`, it loops **only** through the properties in that descriptor table. Because `CAPACITY` and `ENERGY_FULL` are completely absent from the broken table, **the kernel never creates those sysfs files**.
+
+### D. The Boot-Time Caching Trap in ACPI DSDT
 In the disassembled Bohr motherboard DSDT table:
 ```asl
 Method (_BIX, 0, Serialized)
@@ -254,15 +310,11 @@ When the laptop powers on with the original battery disconnected and no active S
 1. At boot, the Embedded Controller's internal RAM offsets `0x84` (`BTDC`), `0x86` (`BTDV`), and `0x88` (`BTFC`) are all `0x0000`.
 2. When the Linux ACPI driver executes `_BIX` during early boot, `If (((BTDV && BTFC) && BTDC))` evaluates to `False`.
 3. The kernel receives zero for `design_capacity` and `design_voltage`.
-4. As a result, the Linux kernel **refuses to create the following sysfs attributes**:
-   * `/sys/class/power_supply/BAT0/capacity` (percentage integer)
-   * `/sys/class/power_supply/BAT0/energy_full`
-   * `/sys/class/power_supply/BAT0/energy_full_design`
-   * `/sys/class/power_supply/BAT0/charge_full`
+4. As detailed above, the driver selects `energy_battery_full_cap_broken_props`, and the kernel **refuses to instantiate `/sys/class/power_supply/BAT0/capacity` or `energy_full`**.
 
 When our userspace Python daemon later writes values to `0x90` (`BAPV` = 12500 mV) and `0x92` (`BARC`), the periodic `_BST` query populates `/sys/class/power_supply/BAT0/voltage_now` and `energy_now`. However, because `_BIX` is never re-evaluated during regular polling, `capacity` and `energy_full` remain non-existent in sysfs.
 
-### C. BTOP Source Code Inspection
+### E. BTOP Source Code Inspection
 An audit of the BTOP C++ source code (`src/linux/btop_linux.cpp`, method `Battery::collect()`) reveals why it hides the battery:
 
 ```cpp
@@ -282,11 +334,32 @@ if (fs::exists(bat_path / "capacity")) {
 
 Because the kernel never instantiated `capacity` or `energy_full`, BTOP trips the final fallback branch, sets `has_battery = false`, and completely suppresses the battery rendering box from the terminal UI.
 
-### D. Re-Enumeration via Hardware Emulation (ESP32)
-Why does the hardware ESP32 emulator resolve this permanently?
-* The ESP32 is powered from standby power or USB, so it is already active before the AMD APU and BIOS bootloader initialize.
-* During early power-on self-test (POST), the EC interrogates the SMBus fuel gauge at address `0x0B`. The ESP32 immediately answers with valid design parameters (3610 mAh, 11400 mV).
-* When Linux boots and queries `_BIX`, the ACPI condition passes on the very first try. The kernel creates `/sys/class/power_supply/BAT0/capacity` and `energy_full`, allowing BTOP, GNOME, KDE, and UPower to display battery statistics out of the box.
+### F. Software Workaround: Driver Unbind/Rebind Sequence (`PNP0C0A:00`)
+Because the EC patcher daemon is continuously writing valid `BTDC` (3610 mAh), `BTDV` (11400 mV), and `BTFC` (3610 mAh) to EC RAM, we can force the Linux kernel to discard the broken device descriptor and perform a fresh probe of `_BIX` without rebooting:
+
+```bash
+# 1. Unbind the battery ACPI platform device (tears down the broken BAT0 instance)
+echo -n "PNP0C0A:00" | sudo tee /sys/bus/platform/drivers/acpi-battery/unbind
+
+# 2. Rebind the battery ACPI platform device (forces a fresh probe and re-evaluates _BIX)
+echo -n "PNP0C0A:00" | sudo tee /sys/bus/platform/drivers/acpi-battery/bind
+```
+
+#### What Happens Internally:
+1. **Unbind:** The kernel invokes `acpi_battery_remove()`, unregistering the old power supply device and removing `/sys/class/power_supply/BAT0/`.
+2. **Rebind:** The kernel invokes `acpi_battery_add()`, which triggers `acpi_battery_get_info()` fresh.
+3. Because EC RAM is already patched, `_BIX` executes `If (((BTDV && BTFC) && BTDC))` which now evaluates to **TRUE**.
+4. The driver reads valid capacities, passes `ACPI_BATTERY_CAPACITY_VALID()`, and assigns the full `energy_battery_props` array.
+5. The kernel registers a new `BAT0` instance **containing both `capacity` and `energy_full`**.
+6. **BTOP and desktop applets immediately recognize the battery and display the battery percentage gauge!**
+
+### G. Hardware Solution: Permanent Resolution via ESP32 Pre-Boot Initialization
+While the software rebind provides an immediate OS-level fix, the **ESP32 Microcontroller Emulator** solves this permanently at the silicon and BIOS level:
+* The ESP32 is powered from USB or 5V standby and is active *before* the laptop boots.
+* During early power-on self-test (POST), the motherboard EC interrogates SMBus slave address `0x0B`.
+* The ESP32 immediately answers with valid design parameters (3610 mAh, 11400 mV).
+* The EC populates its RAM *before* the Linux kernel bootloader starts.
+* When Linux boots and calls `_BIX`, the ACPI condition passes on the very first try. The kernel assigns `energy_battery_props` natively, and all sysfs files exist from boot without any userspace unbind/bind intervention.
 
 ---
 
