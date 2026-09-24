@@ -89,8 +89,24 @@ def apply_fast_ppt():
     except Exception:
         pass
 
-# Initial power unlock
+def apply_gpu_vram_pin():
+    """Pin GPU VRAM (MCLK) to 1.2 GHz (State 3 - DDR4-2400) for maximum compute throughput"""
+    try:
+        for card in ["/sys/class/drm/card0/device", "/sys/class/drm/card1/device"]:
+            dpm_level_path = os.path.join(card, "power_dpm_force_performance_level")
+            dpm_mclk_path = os.path.join(card, "pp_dpm_mclk")
+            if os.path.exists(dpm_level_path) and os.path.exists(dpm_mclk_path):
+                with open(dpm_level_path, "w") as f:
+                    f.write("manual")
+                with open(dpm_mclk_path, "w") as f:
+                    f.write("3")
+                break
+    except Exception:
+        pass
+
+# Initial power & GPU VRAM unlock
 apply_fast_ppt()
+apply_gpu_vram_pin()
 last_power_time = time.time()
 
 running = True
@@ -140,10 +156,11 @@ try:
             f.seek(0x9A)
             f.write(btem_bytes)
 
-            # Re-apply Fast PPT & instant PROCHOT recovery every 3 seconds
+            # Re-apply Fast PPT, GPU VRAM pin & instant PROCHOT recovery every 3 seconds
             now = time.time()
             if now - last_power_time >= 3.0:
                 apply_fast_ppt()
+                apply_gpu_vram_pin()
                 last_power_time = now
 
             time.sleep(0.005)  # 5ms loop
