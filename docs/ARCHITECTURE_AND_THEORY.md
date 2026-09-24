@@ -747,13 +747,39 @@ With electrical headroom established and active fan cooling in place, the power 
 * `--vrm-current=55000` (55A TDC sustained electrical current)
 * `--vrmmax-current=70000` (70A EDC peak electrical current)
 
-### C. Live Empirical Results Under Full Combined Load
-Under 100% 6-thread AVX compute (`sr2sieve64`) + 100% Vega 8 OpenCL (`genefer22g`) + Frigate NVR:
-* **All-Core CPU Frequency:** Rose from **2,414 MHz up to ~2,740 – 3,161 MHz** (+326 MHz to +747 MHz boost!).
-* **GPU Core Clock (`SCLK`):** Rose from **610 MHz to 700 – 720 MHz**.
-* **GPU Memory Bandwidth:** Pinned at **1,200 MHz (38.4 GB/s)**.
-* **Core Temperature (`Tctl`):** Rose slightly from 60.8°C to **66.4°C – 67.5°C**, maintaining a comfortable **16.5°C thermal buffer** below the 84°C ceiling.
-* **400 MHz Throttling:** **0 drops (0.00%)**.
+### C. Live Empirical Results: 10-Minute Continuous Watchdog Audit
+A continuous 10-minute (601.10 seconds) watchdog audit was executed under simultaneous 100% 6-thread AVX compute (`sr2sieve64`), 100% Vega 8 OpenCL (`genefer22g`), and Frigate NVR (13 active camera streams):
+
+```text
+================================================================================
+10-MINUTE SYSTEM WATCHDOG AUDIT COMPLETED — FINAL AGGREGATE REPORT
+================================================================================
+Total Test Duration:       601.10 seconds (505 samples across 8 threads)
+CPU Average Frequency:     2,719.8 MHz (~2.72 GHz all-core)
+CPU Minimum Frequency:     2,601.1 MHz (Never dropped below 2.6 GHz!)
+CPU Maximum Frequency:     3,294.7 MHz
+Tctl Core Temperature Avg: 68.45°C (Min: 66.6°C, Peak Max: 78.2°C)
+Thermal Headroom below 84C:5.8°C minimum buffer at peak transient load
+400 MHz Throttling Drops:  0 / 505 (0.00% — Zero throttling drops)
+GPU Core SCLK Average:     753.7 MHz
+GPU VRAM MCLK Average:     1,200.0 MHz (Flat pinned at 1.2 GHz / DDR4-2400)
+GPU Busy Utilization Avg:  98.1%
+GPU VRAM Used Avg:         846.4 MB (Dedicated UMA Carve-Out)
+GPU GTT Used Avg:          768.0 MB (Dynamic Shared System RAM)
+BOINC Genefer Status:      ACTIVE (PID 201019 — zero crashes or hangs)
+Frigate Detector Status:   ACTIVE
+Frigate FFmpeg Streams:    13 active camera decoders
+New Kernel Dmesg Entries:  0 lines (Zero panics, zero resets, zero MCE errors)
+Kernel Status:             100% CLEAN
+================================================================================
+```
+
+* **All-Core CPU Frequency:** Rose from **2,414 MHz up to ~2,720 – 3,295 MHz** (+306 MHz to +880 MHz boost!).
+* **GPU Core Clock (`SCLK`):** Rose from **610 MHz to an average of 753.7 MHz**.
+* **GPU Memory Bandwidth:** 100% flat pinned at **1,200 MHz (38.4 GB/s)**.
+* **Core Temperature (`Tctl`):** Averaged **68.45°C**, maintaining safe thermal headroom below the 84°C ceiling.
+* **400 MHz Throttling:** **0 drops (0.00%) across 4,040 thread data points**.
+* **Kernel Stability:** Zero kernel oopses, zero GPU wedging/resets, zero MCE errors.
 
 ### D. Multi-Layer Persistence Guarantee
 All optimizations survive full reboots without manual intervention:
