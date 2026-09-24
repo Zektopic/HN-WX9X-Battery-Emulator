@@ -59,16 +59,16 @@ echo -n "PNP0C0A:00" | sudo tee /sys/bus/platform/drivers/acpi-battery/bind
 By default, when running on AC without a valid OEM battery, Huawei firmware caps the Ryzen APU to an **18.0W STAPM limit**. Under combined CPU and GPU workloads (e.g. BOINC), this starves the CPU, locking cores to ~2.1 GHz.
 
 The patcher continuously optimizes the SMU power table and GPU DPM states every 3 seconds:
-* **STAPM Limit:** Set to **`28W`** (sustained continuous compute matching chassis/extrusion dissipation)
-* **Fast PPT Limit:** Set to **`30W`** (burst compute budget)
-* **Slow PPT Limit:** Set to **`28W`**
-* **VRM Max Current (EDC):** Set to **`55A`** (pins boost clocks around **~2.80 – 2.95 GHz**)
-* **VRM Current (TDC):** Set to **`45A`**
-* **Thermal Limit (Tctl):** Set to **`84°C`** (stabilizes temperatures at ~74–76°C, eliminating 400 MHz drops)
+* **STAPM Limit:** Set to **`35W`** (sustained continuous compute matching active fan + extrusion cooling)
+* **Fast PPT Limit:** Set to **`38W`** (burst compute budget)
+* **Slow PPT Limit:** Set to **`35W`**
+* **VRM Max Current (EDC):** Set to **`70A`** (pins boost clocks up to **~2.74 – 3.16 GHz**)
+* **VRM Current (TDC):** Set to **`55A`**
+* **Thermal Limit (Tctl):** Set to **`84°C`** (runs cool at ~66–68°C with external fan, eliminating 400 MHz drops)
 * **PROCHOT Deassertion Ramp:** Set to **`1`** (collapses 400 MHz recovery from 30 seconds to 1 millisecond)
 * **GPU VRAM (MCLK) Lock:** Pinned permanently to **`1.2 GHz`** (State 3 - DDR4-2400) for maximum OpenCL compute bandwidth
 
-**Result:** All 8 CPU threads stay pinned at **~2.80–2.95 GHz** with **0% throttle drops**, while GPU VRAM is locked to **1.2 GHz** permanently.
+**Result:** All 8 CPU threads stay pinned at **~2.74 – 3.16 GHz** with **0% throttle drops**, while GPU VRAM is locked to **1.2 GHz** permanently.
 
 ---
 

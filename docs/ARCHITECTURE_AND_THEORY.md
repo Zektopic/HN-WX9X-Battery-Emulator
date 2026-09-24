@@ -58,7 +58,18 @@ This document details the reverse engineering, firmware mechanics, silicon archi
     - Double Data Rate Physical Clock Mapping (667 MHz to 1200 MHz / DDR4-2400)
     - AMDGPU PowerPlay DPM Governor Transitions
     - Permanent 1.2 GHz Pinning via Driver Interface & Automation Daemon
-
+12. [Integrated GPU Memory Architecture: Dedicated VRAM (Carve-Out) vs. GTT & OpenCL Execution](#12-integrated-gpu-memory-architecture-dedicated-vram-carve-out-vs-gtt--opencl-execution)
+    - Dedicated VRAM Carve-Out (1 GB) vs. Dynamic GTT (7.03 GB)
+    - Zero Performance Delta on UMA DDR4-2400 Bus (38.4 GB/s)
+    - Frigate NVR (VCN ASICs) & PrimeGrid OpenCL Coexistence
+    - GPU 0% Utilization Drops: Work Unit Recovery & Inter-Kernel NTT Synchronization
+    - Empirical 10-Minute Continuous Benchmark (600s, 550 samples, 0 drops)
+13. [The 100W USB-PD Power Upgrade & 35W/38W Elevated SMU Calibration](#13-the-100w-usb-pd-power-upgrade--35w38w-elevated-smu-calibration)
+    - Overcoming the 65W USB-PD Electrical Clamp (BD PROCHOT)
+    - 100W Power Delivery Headroom & VRM Rail Stabilization
+    - The 35W STAPM / 38W Fast PPT Profile (+133% Over Factory TDP)
+    - Simultaneous All-Core Boost to ~2.74 – 3.16 GHz Under Full Load
+    - Persistence Guarantee via Systemd Daemon & BOINC State Architecture
 
 ---
 
@@ -678,5 +689,78 @@ def apply_gpu_vram_pin():
         pass
 ```
 The daemon enforces this lock both on boot and during its periodic 3-second maintenance loop, guaranteeing that the GPU VRAM remains pinned at **1.2 GHz** permanently.
+
+---
+
+## 12. Integrated GPU Memory Architecture: Dedicated VRAM (Carve-Out) vs. GTT & OpenCL Execution
+
+Users running heavy compute workloads often ask whether the Vega 8 iGPU can be allocated more VRAM beyond the default 1024 MB (1.0 GB) reported by BIOS and `lspci`.
+
+### A. Dedicated VRAM Carve-Out vs. Dynamic GTT Memory
+On Linux under the open-source `amdgpu` driver, integrated GPUs utilize a two-tier memory hierarchy:
+1. **Dedicated VRAM (The UMA Carve-Out):** A static allocation (fixed at **1,024 MB** by Huawei's AGESA UEFI configuration) subtracted from system RAM before OS initialization.
+2. **GTT (Graphics Translation Table) Dynamic Memory:** A dynamic pool automatically allocated by the Linux kernel, defaulting to **50% of available system memory** (configured to **7,201 MB / 7.03 GB** on this 16 GB laptop).
+
+Together, the GPU has an active addressable memory footprint of:
+$$\text{Total Addressable GPU Memory} = 1.00\text{ GB (VRAM)} + 7.03\text{ GB (GTT)} = \mathbf{8.03\text{ GB}}$$
+
+### B. Why Dedicated VRAM Carve-Out Has Zero Performance Advantage on an APU
+Unlike discrete PCIe graphics cards (where local GDDR6 runs at 400+ GB/s over PCIe while system RAM transfers over bus-limited channels):
+* On the AMD Picasso APU, **both Dedicated VRAM and GTT reside in the exact same physical dual-channel DDR4-2400 modules**.
+* Both memory pools are addressed across the internal Infinity Fabric / memory controller at the **exact same physical 38.4 GB/s bandwidth** with identical nanosecond access latency.
+* Artificially locking 4 GB as "Dedicated VRAM" in BIOS permanently subtracts 4 GB from the Linux kernel and CPU workloads (starving host RAM from 14 GiB to 11 GiB) with **zero performance gain** for GPU computations.
+
+### C. Frigate NVR (VCN ASICs) & PrimeGrid OpenCL Coexistence
+Telemetry confirmed that Frigate NVR and BOINC Genefer run concurrently in GPU memory:
+* **Frigate NVR:** Utilizes the silicon's fixed-function **Video Core Next (`vcn_dec`)** hardware ASIC for H.264/H.265 video decompression across 6 camera streams.
+* **PrimeGrid Genefer:** Squeezes all 512 ALU shader compute cores on `comp_1.x` rings for iterative Number Theoretic Transforms.
+* **Combined Memory Footprint:** Telemetry showed **858 MB Dedicated VRAM + 788 MB Dynamic GTT (~1.57 GB total)** simultaneously allocated without out-of-memory errors or frame drops.
+
+### D. The GPU 0% Utilization Phenomenon
+During execution, monitoring tools occasionally capture GPU utilization dropping to 0% and climbing back to 100%:
+1. **Work Unit Restarts:** When resuming stale BOINC tasks whose checkpoint files were corrupted on disk, BOINC resets the GPU pipeline, flushes memory (dropping VRAM to 89 MB / 200 MHz idle clock for ~15 seconds), fetches fresh work from PrimeGrid, and resumes 100% compute.
+2. **Inter-Kernel Synchronization:** Genefer executes mathematical passes in discrete batches. Between NTT stages, the GPU halts for 50–200ms while intermediate results are DMA-copied to host RAM for CPU verification and disk checkpointing, appearing as momentary 0% dips in polling dashboards (`btop`, `sensors`).
+
+### E. Empirical 10-Minute Continuous Benchmark (CPU BOINC + GPU BOINC + Frigate)
+A continuous 10-minute (600.03 seconds) benchmark was executed with 1.0s telemetry sampling:
+* **Total Samples:** 550 samples across all 8 threads (4,400 data points).
+* **Mean All-Core CPU Frequency:** **2,414.8 MHz** (smoothly sharing the 28W SMU envelope).
+* **Mean Tctl Temperature:** **60.85°C** (Min 59.6°C, Max 64.8°C with external fan).
+* **400 MHz Throttling Hits:** **0 / 550 (0.00%)**.
+
+---
+
+## 13. The 100W USB-PD Power Upgrade & 35W/38W Elevated SMU Calibration
+
+### A. Overcoming the 65W USB-PD Electrical Clamp
+Under the original 65W Huawei power brick, attempting to push APU package power beyond 30W triggered **BD PROCHOT (400 MHz throttle)** even when core temperatures were cold (64.6°C). The root cause was input power supply sag:
+$$\text{Total Wall Draw} = P_{\text{APU}} (40\text{W}) + P_{\text{VRM\_loss}} (5\text{W}) + P_{\text{DDR4}} (4\text{W}) + P_{\text{SSD/WiFi}} (4\text{W}) + P_{\text{display}} (4\text{W}) \approx 57\text{W} – 62\text{W}$$
+Fast transient current spikes momentarily brown out the 65W adapter (20V @ 3.25A), tripping the motherboard's input protection logic.
+
+Upgrading to a **100W USB-PD power supply (20V @ 5A)** expanded input electrical capacity by **+53.8%**, permanently eliminating power supply sag.
+
+### B. The 35W STAPM / 38W Fast PPT Calibration
+With electrical headroom established and active fan cooling in place, the power profile was elevated:
+* `--stapm-limit=35000` (35.0 Watts sustained APU package power)
+* `--fast-limit=38000` (38.0 Watts transient burst)
+* `--slow-limit=35000` (35.0 Watts secondary envelope)
+* `--vrm-current=55000` (55A TDC sustained electrical current)
+* `--vrmmax-current=70000` (70A EDC peak electrical current)
+
+### C. Live Empirical Results Under Full Combined Load
+Under 100% 6-thread AVX compute (`sr2sieve64`) + 100% Vega 8 OpenCL (`genefer22g`) + Frigate NVR:
+* **All-Core CPU Frequency:** Rose from **2,414 MHz up to ~2,740 – 3,161 MHz** (+326 MHz to +747 MHz boost!).
+* **GPU Core Clock (`SCLK`):** Rose from **610 MHz to 700 – 720 MHz**.
+* **GPU Memory Bandwidth:** Pinned at **1,200 MHz (38.4 GB/s)**.
+* **Core Temperature (`Tctl`):** Rose slightly from 60.8°C to **66.4°C – 67.5°C**, maintaining a comfortable **16.5°C thermal buffer** below the 84°C ceiling.
+* **400 MHz Throttling:** **0 drops (0.00%)**.
+
+### D. Multi-Layer Persistence Guarantee
+All optimizations survive full reboots without manual intervention:
+1. **Systemd Service:** [`ec-voltage-patcher.service`](file:///etc/systemd/system/ec-voltage-patcher.service) is enabled and starts at multi-user target, running [`ec_voltage_patcher.py`](file:///home/manupa/18650_battery_mod/ec_voltage_patcher.py) as root.
+2. **SMU Re-enforcement:** The daemon continuously re-asserts the 35W/38W limits and GPU 1.2 GHz VRAM pin every 3.0 seconds.
+3. **EC RAM Emulation:** The daemon injects battery registers every 5ms to satisfy ACPI `_BIX` and `_BST`.
+4. **BOINC GPU State:** Configured with `--set_gpu_mode always` and persisted to disk in `/var/lib/boinc-client/client_state.xml` (`<user_gpu_request>1</user_gpu_request>`).
+
 
 
