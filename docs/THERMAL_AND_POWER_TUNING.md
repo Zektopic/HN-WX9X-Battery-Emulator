@@ -13,9 +13,9 @@ Depending on your use case, you can adjust the SMU parameters in [`ec_voltage_pa
 | Profile | Fast PPT | Slow PPT | Tctl Temp | Target Clock (All Cores) | Noise & Thermals | Recommended For |
 | :--- | :---: | :---: | :---: | :---: | :---: | :--- |
 | **Silent / Cool** | `25 W` | `22 W` | `72 °C` | `~2.40 – 2.50 GHz` | Whisper quiet, ~65–70°C | Office work, quiet environments |
-| **Stabilized (Current Default)** | `30 W` | `28 W` | `84 °C` | `~2.75 – 2.90 GHz` | Stable & cool, ~74–76°C | **24/7 BOINC compute (Passive extrusion / Pre-repaste)** |
-| **Balanced (Active Fan/Repaste)** | `40 W` | `35 W` | `85 °C` | `~2.95 – 3.05 GHz` | Moderate fan, ~78–82°C | 24/7 compute with PTM7950 or fan on extrusion |
-| **Max Turbo / Waterblock** | `45 W` | `45 W` | `95 °C` | `~3.02 – 3.05 GHz` | Maximum fan/loop, ~80–85°C | Full active watercooling loop |
+| **Stabilized 65W** | `30 W` | `28 W` | `84 °C` | `~2.40 – 2.89 GHz` | Passive block or stock 65W adapter | 24/7 compute with OEM 65W charger |
+| **Active Fan + 100W PD (Current)** | `38 W` | `35 W` | `84 °C` | `~2.72 – 3.16 GHz` | Cool, ~64–68°C with external fan | **24/7 BOINC (CPU+GPU) + Frigate with 100W charger** |
+| **Max Turbo / Waterblock** | `45 W` | `45 W` | `95 °C` | `~3.05 GHz (All Core)` | Maximum fan/loop, ~75–80°C | Full active watercooling loop |
 
 ---
 
@@ -30,13 +30,13 @@ def apply_fast_ppt():
     try:
         subprocess.run([
             RYZENADJ_BIN,
-            "--stapm-limit=28000",        # Sustained power limit (in mW)
-            "--fast-limit=30000",         # Short burst power limit (in mW)
-            "--slow-limit=28000",         # Sustained package power limit (in mW)
-            "--vrm-current=45000",        # TDC limit (in mA)
-            "--vrmmax-current=55000",     # EDC limit (in mA)
-            "--vrmsoc-current=14000",     # SoC TDC limit (in mA)
-            "--vrmsocmax-current=18000",  # SoC EDC limit (in mA)
+            "--stapm-limit=35000",        # Sustained power limit (35W in mW)
+            "--fast-limit=38000",         # Short burst power limit (38W in mW)
+            "--slow-limit=35000",         # Sustained package power limit (35W in mW)
+            "--vrm-current=55000",        # TDC limit (55A in mA)
+            "--vrmmax-current=70000",     # EDC limit (70A in mA)
+            "--vrmsoc-current=14000",     # SoC TDC limit (14A in mA)
+            "--vrmsocmax-current=18000",  # SoC EDC limit (18A in mA)
             "--tctl-temp=84",             # Temperature cap (in °C)
             "--prochot-deassertion-ramp=1"# Instant recovery from 400 MHz trips
         ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=2)

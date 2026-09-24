@@ -70,17 +70,17 @@ btem_bytes = struct.pack("<H", 2980)   # 0x9A: Temperature (25 C)
 RYZENADJ_BIN = "/usr/local/bin/ryzenadj"
 
 def apply_fast_ppt():
-    """Apply calibrated 28W-30W targets to pin CPU to ~2.8 GHz and 84C thermal ceiling"""
+    """Apply calibrated 35W-38W targets for 100W USB-PD charger to boost CPU/GPU and 84C thermal ceiling"""
     if not os.path.exists(RYZENADJ_BIN):
         return
     try:
         subprocess.run([
             RYZENADJ_BIN,
-            "--stapm-limit=28000",
-            "--fast-limit=30000",
-            "--slow-limit=28000",
-            "--vrm-current=45000",
-            "--vrmmax-current=55000",
+            "--stapm-limit=35000",
+            "--fast-limit=38000",
+            "--slow-limit=35000",
+            "--vrm-current=55000",
+            "--vrmmax-current=70000",
             "--vrmsoc-current=14000",
             "--vrmsocmax-current=18000",
             "--tctl-temp=84",
