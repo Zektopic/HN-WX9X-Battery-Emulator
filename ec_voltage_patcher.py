@@ -163,7 +163,7 @@ try:
                 apply_gpu_vram_pin()
                 last_power_time = now
 
-            time.sleep(0.005)  # 5ms loop
+            time.sleep(0.05)   # 50ms loop (20 Hz) - Slashes ACPI IRQ 9 storm by 90% while keeping battery emulation solid
 except Exception as e:
     print(f"EC Patcher Error: {e}", file=sys.stderr)
     sys.exit(1)
