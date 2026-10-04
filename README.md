@@ -10,7 +10,7 @@ This toolkit contains all scripts, microcontroller firmware, ACPI DSDT research,
 | :--- | :--- |
 | **`docs/ARCHITECTURE_AND_THEORY.md`** | 🧠 **Deep Technical Whitepaper:** Precision Boost 2 architecture, BD PROCHOT electrical pin behavior, DSDT ASL reverse-engineering, and anti-400MHz theory. |
 | **`docs/THERMAL_AND_POWER_TUNING.md`** | 🌡️ **Tuning Guide:** Power profiles, thermal caps, cooler modding reality, and live SMU telemetry commands. |
-| **`ec_voltage_patcher.py`** | ⚡ High-speed daemon that injects exact DSDT offsets into EC RAM (50ms / 20 Hz loop, zero IRQ 9 waste), locks C-states, and continuously locks the **35W/38W Fast PPT & 70A VRM** limits to sustain **3.0+ GHz** on all cores. |
+| **`ec_voltage_patcher.py`** | ⚡ High-speed daemon that injects exact DSDT offsets into EC RAM (20ms / 50 Hz loop, low IRQ 9 overhead), locks C-states, and continuously locks the **35W/38W Fast PPT & 70A VRM** limits to sustain **3.0+ GHz** on all cores. |
 | **`install_service.sh`** | 🛠️ One-click persistent installer: configures `/etc/modules-load.d/ec_sys.conf`, `/etc/modprobe.d/ec_sys.conf`, and registers `ec-voltage-patcher.service` in systemd to **persist across reboots**. |
 | **`uninstall_service.sh`**| 🛑 One-click uninstaller to stop, disable, and clean up the service and kernel configurations. |
 | **`monitor_battery.sh`** | 📊 Real-time terminal dashboard displaying battery voltage, capacity, core clock speeds (with 3.0G+ badges), Ryzen SMU power state, and GPU load. |
@@ -64,7 +64,7 @@ The patcher continuously optimizes the SMU power table and GPU DPM states every 
 * **Slow PPT Limit:** Set to **`35W`**
 * **VRM Max Current (EDC):** Set to **`70A`** (pins boost clocks up to **~2.74 – 3.16 GHz**)
 * **VRM Current (TDC):** Set to **`55A`**
-* **Thermal Limit (Tctl):** Set to **`84°C`** (runs cool at ~66–68°C with external fan, eliminating 400 MHz drops)
+* **Thermal Limit (Tctl):** Set to **`88°C`** (runs at ~68–78°C with external fan, eliminating 400 MHz thermal spikes)
 * **PROCHOT Deassertion Ramp:** Set to **`1`** (collapses 400 MHz recovery from 30 seconds to 1 millisecond)
 * **GPU VRAM (MCLK) Lock:** Pinned permanently to **`1.2 GHz`** (State 3 - DDR4-2400) for maximum OpenCL compute bandwidth
 

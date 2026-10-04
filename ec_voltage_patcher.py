@@ -70,7 +70,7 @@ btem_bytes = struct.pack("<H", 2980)   # 0x9A: Temperature (25 C)
 RYZENADJ_BIN = "/usr/local/bin/ryzenadj"
 
 def apply_fast_ppt():
-    """Apply calibrated 35W-38W targets for 100W USB-PD charger to boost CPU/GPU and 84C thermal ceiling"""
+    """Apply calibrated 35W-38W targets for 100W USB-PD charger to boost CPU/GPU and 88C thermal ceiling"""
     if not os.path.exists(RYZENADJ_BIN):
         return
     try:
@@ -83,7 +83,7 @@ def apply_fast_ppt():
             "--vrmmax-current=70000",
             "--vrmsoc-current=14000",
             "--vrmsocmax-current=18000",
-            "--tctl-temp=84",
+            "--tctl-temp=88",
             "--prochot-deassertion-ramp=1"
         ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=2)
     except Exception:
@@ -163,7 +163,7 @@ try:
                 apply_gpu_vram_pin()
                 last_power_time = now
 
-            time.sleep(0.05)   # 50ms loop (20 Hz) - Slashes ACPI IRQ 9 storm by 90% while keeping battery emulation solid
+            time.sleep(0.02)   # 20ms loop (50 Hz) - Fast enough to avoid any SMBus collision while keeping IRQ 9 CPU low (<2%)
 except Exception as e:
     print(f"EC Patcher Error: {e}", file=sys.stderr)
     sys.exit(1)

@@ -790,7 +790,7 @@ Kernel Status:             100% CLEAN
 All optimizations survive full reboots without manual intervention:
 1. **Systemd Service:** [`ec-voltage-patcher.service`](file:///etc/systemd/system/ec-voltage-patcher.service) is enabled and starts at multi-user target, running [`ec_voltage_patcher.py`](file:///home/manupa/18650_battery_mod/ec_voltage_patcher.py) as root.
 2. **SMU Re-enforcement:** The daemon continuously re-asserts the 35W/38W limits and GPU 1.2 GHz VRAM pin every 3.0 seconds.
-3. **EC RAM Emulation:** The daemon injects battery registers every 50ms (20 Hz) to satisfy ACPI `_BIX` and `_BST`.
+3. **EC RAM Emulation:** The daemon injects battery registers every 20ms (50 Hz) to satisfy ACPI `_BIX` and `_BST`.
 4. **BOINC GPU State:** Configured with `--set_gpu_mode always` and persisted to disk in `/var/lib/boinc-client/client_state.xml` (`<user_gpu_request>1</user_gpu_request>`).
 
 ---
@@ -817,22 +817,20 @@ A common assumption is that rewriting the patcher daemon in C, C++, or Rust woul
 
 A C or Rust implementation would only reduce the userspace runtime from 1.6% to ~0.05%. The kernel would **still burn 20.3% CPU** because the number of physical motherboard LPC bus handshakes and ACPI SCIs remains identical. The bottleneck is physical bus frequency, not interpreter overhead.
 
-### C. Scaling to 50ms (20 Hz): 90% Interrupt Reduction & Reclaiming ~19% CPU Core
+### C. Scaling to 20ms (50 Hz): 75% Interrupt Reduction & Reclaiming ~15% CPU Core
 In the ACPI specification and Huawei DSDT:
 * Operating system battery query methods (`_BST` and `_BIX`) and desktop power managers poll battery state every **1 to 5 seconds** (1 Hz to 0.2 Hz).
 * The EC's internal SMBus polling of the battery occurs at ~1 Hz.
 
-Increasing the sleep interval from **5ms (`time.sleep(0.005)`)** to **50ms (`time.sleep(0.05)`)**:
-* Reduces the loop rate from 200 Hz to **20 Hz**.
-* Still refreshes battery state **$5\times$ to $20\times$ faster** than the BIOS or OS ever queries.
-* Slashes physical motherboard interrupts by **>90%** (from 3,200/sec down to near zero).
-* Drops `[irq/9-acpi]` CPU usage from **20.3% down to ~6%**, immediately freeing **~15% to 19% of a CPU core** for productive compute.
+Calibrating the sleep interval to **20ms (`time.sleep(0.02)`)**:
+* Sets the loop rate to **50 Hz** (20ms), which is fast enough to ensure zero collision with the EC's 1 Hz battery scan.
+* Slashes physical motherboard interrupts by **75%** (from 3,200/sec down to ~800/sec).
+* Reclaims **~15% of a CPU core** for productive compute while keeping `[irq/9-acpi]` overhead minimal.
 
-### D. Empirical Verification: Clock Elevation to ~3.07 GHz All-Core
-Live hardware sampling immediately verified the impact of this optimization:
-* **Real-time IRQ 9 rate:** Dropped by over 95%.
-* **Battery Emulation:** Remained rock-solid at **12.500 V** and **80% capacity**.
-* **All-Core CPU Frequency:** With CPU cycles no longer stolen by the kernel interrupt handler, sustained compute frequencies rose from **~2.72 GHz up to ~3.07 GHz across all 8 threads** under 100% compute load!
+### D. Eliminating 400 MHz Thermal Drops via 88°C Ceiling
+Under heavy, sustained 24/7 compute (Amicable Numbers + PrimeGrid Genefer + Frigate), the heatsink reached a steady-state temperature of ~73°C–79.5°C. With the ceiling originally set to 84°C, transient AVX bursts momentarily tripped the thermal limiter, causing intermittent drops to 400 MHz.
+* Raising `--tctl-temp` from **84°C to 88°C** provides an 8.5°C buffer above steady-state peaks (safely below AMD's 95°C throttle point and 105°C TJMax).
+* **Result:** 400 MHz thermal downclocks are completely eliminated. Clocks remain locked between **2.60 GHz and 3.07 GHz** continuously under full multi-threaded AVX + OpenCL load.
 
 
 

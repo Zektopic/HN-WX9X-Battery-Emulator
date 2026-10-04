@@ -14,7 +14,7 @@ Depending on your use case, you can adjust the SMU parameters in [`ec_voltage_pa
 | :--- | :---: | :---: | :---: | :---: | :---: | :--- |
 | **Silent / Cool** | `25 W` | `22 W` | `72 °C` | `~2.40 – 2.50 GHz` | Whisper quiet, ~65–70°C | Office work, quiet environments |
 | **Stabilized 65W** | `30 W` | `28 W` | `84 °C` | `~2.40 – 2.89 GHz` | Passive block or stock 65W adapter | 24/7 compute with OEM 65W charger |
-| **Active Fan + 100W PD (Current)** | `38 W` | `35 W` | `84 °C` | `~2.72 – 3.16 GHz` | Cool, ~64–68°C with external fan | **24/7 BOINC (CPU+GPU) + Frigate with 100W charger** |
+| **Active Fan + 100W PD (Current)** | `38 W` | `35 W` | `88 °C` | `~2.72 – 3.16 GHz` | Cool, ~68–78°C with external fan | **24/7 BOINC (CPU+GPU) + Frigate with 100W charger** |
 | **Max Turbo / Waterblock** | `45 W` | `45 W` | `95 °C` | `~3.05 GHz (All Core)` | Maximum fan/loop, ~75–80°C | Full active watercooling loop |
 
 ---
@@ -37,7 +37,7 @@ def apply_fast_ppt():
             "--vrmmax-current=70000",     # EDC limit (70A in mA)
             "--vrmsoc-current=14000",     # SoC TDC limit (14A in mA)
             "--vrmsocmax-current=18000",  # SoC EDC limit (18A in mA)
-            "--tctl-temp=84",             # Temperature cap (in °C)
+            "--tctl-temp=88",             # Temperature cap (in °C - prevents false 400MHz trips)
             "--prochot-deassertion-ramp=1"# Instant recovery from 400 MHz trips
         ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=2)
     except Exception:
