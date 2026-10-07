@@ -70,7 +70,7 @@ btem_bytes = struct.pack("<H", 2980)   # 0x9A: Temperature (25 C)
 RYZENADJ_BIN = "/usr/local/bin/ryzenadj"
 
 def apply_fast_ppt():
-    """Apply steady 35W sustained profile (eliminates 38W transient spike) with 75A EDC margin"""
+    """Apply Option A: steady 35W sustained profile (eliminates 38W overshoot) with 70A EDC"""
     if not os.path.exists(RYZENADJ_BIN):
         return
     try:
