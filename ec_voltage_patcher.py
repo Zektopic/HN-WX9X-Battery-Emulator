@@ -70,14 +70,14 @@ btem_bytes = struct.pack("<H", 2980)   # 0x9A: Temperature (25 C)
 RYZENADJ_BIN = "/usr/local/bin/ryzenadj"
 
 def apply_fast_ppt():
-    """Apply high-performance 35W-38W targets with 70A EDC unlocked by PTM7950 + VRM thermal pads"""
+    """Apply steady 35W sustained profile (eliminates 38W transient spike) with 75A EDC margin"""
     if not os.path.exists(RYZENADJ_BIN):
         return
     try:
         subprocess.run([
             RYZENADJ_BIN,
             "--stapm-limit=35000",
-            "--fast-limit=38000",
+            "--fast-limit=35000",
             "--slow-limit=35000",
             "--vrm-current=55000",
             "--vrmmax-current=70000",

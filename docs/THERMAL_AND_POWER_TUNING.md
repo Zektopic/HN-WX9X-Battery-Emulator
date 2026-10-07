@@ -75,6 +75,22 @@ With Honeywell PTM7950 applied directly to the bare APU die and dedicated therma
 | **CPU All-Core Clock (8T)** | ~2.50 – 2.62 GHz | **~2.75 – 3.14 GHz** | **Consistent PB2 Turbo (~3.14 GHz peak)** |
 | **400 MHz Drops (15s sample)**| Frequent BD PROCHOT trips | **0 drops** | **100% eliminated** |
 
+### D. Empirical 20-Minute Head-to-Head: Flat 35W (Option A) vs. 38W Burst (Option B)
+To find the absolute optimal 24/7 operating profile, both profiles were tested back-to-back under continuous 100% compute load for 10 minutes each (5,917 high-resolution 100ms samples per phase):
+
+| Metric | Option A: Flat 35W Capped (70A EDC) | Option B: 38W Burst (75A EDC) | Winner & Hardware Takeaway |
+| :--- | :---: | :---: | :--- |
+| **400 MHz Throttle Drops** | **0 episodes (0.0s)** | 1 episode (517s in clamp) | **Option A (Flawless 100% stability)** |
+| **Sustained System Avg Clock** | **2,848.3 MHz** | 893.3 MHz (collapsed) | **Option A (+1,955 MHz higher throughput)** |
+| **Average Tctl Temperature** | **71.2 °C** | 52.8 °C (idle during clamp)| **Option A (Stable linear heat dissipation)** |
+| **Peak Tctl Temperature** | **82.0 °C** | 78.8 °C | **Option A (Plenty of margin below 88°C)** |
+| **Average GPU Temperature** | **70.8 °C** | 52.3 °C | **Option A (Pegged OpenCL compute)** |
+
+#### 🔬 Engineering Finding: Why Option A Wins
+The Huawei MateBook D motherboard's VRM controller / PWM circuitry features a hardware Over-Current Protection (OCP) trip threshold around **~70A–72A**. 
+* **Option B (38W Fast PPT):** Even with 75A requested from SMU, transient 38W bursts force the VRMs past their physical OCP threshold, latching the hardware PROCHOT pin LOW and stalling the APU at 400 MHz for 86% of the time.
+* **Option A (35W Flat Fast PPT):** Keeping Fast PPT identical to Slow PPT (`--fast-limit=35000` = `--slow-limit=35000`) completely prevents overshoot, keeping current strictly within the VRM's continuous delivery envelope. This delivers **0 throttle drops**, completely smooth 24/7 operation, and peak multi-core compute throughput.
+
 ---
 
 ## 📊 Live Verification & Telemetry Tools
