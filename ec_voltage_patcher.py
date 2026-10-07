@@ -70,7 +70,7 @@ btem_bytes = struct.pack("<H", 2980)   # 0x9A: Temperature (25 C)
 RYZENADJ_BIN = "/usr/local/bin/ryzenadj"
 
 def apply_fast_ppt():
-    """Apply 35W sustained profile with GPU pegged at ~950 MHz and CPU stabilized at base clock"""
+    """Apply Option A: steady 35W sustained profile (eliminates 38W overshoot) with 70A EDC"""
     if not os.path.exists(RYZENADJ_BIN):
         return
     try:
@@ -84,42 +84,44 @@ def apply_fast_ppt():
             "--vrmsoc-current=14000",
             "--vrmsocmax-current=18000",
             "--tctl-temp=88",
-            "--min-gfxclk=950",
-            "--max-gfxclk=950",
             "--prochot-deassertion-ramp=1"
         ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=2)
     except Exception:
         pass
 
 def apply_gpu_vram_pin():
-    """Pin GPU VRAM (MCLK) to 1.2 GHz (State 3 - DDR4-2400) for maximum compute throughput"""
+    """Pin GPU VRAM (MCLK) to 1.2 GHz (State 3) and SCLK to State 1 (~700-750 MHz) for balanced compute throughput"""
     try:
         for card in ["/sys/class/drm/card0/device", "/sys/class/drm/card1/device"]:
             dpm_level_path = os.path.join(card, "power_dpm_force_performance_level")
             dpm_mclk_path = os.path.join(card, "pp_dpm_mclk")
+            dpm_sclk_path = os.path.join(card, "pp_dpm_sclk")
             if os.path.exists(dpm_level_path) and os.path.exists(dpm_mclk_path):
                 with open(dpm_level_path, "w") as f:
                     f.write("manual")
                 with open(dpm_mclk_path, "w") as f:
                     f.write("3")
+                if os.path.exists(dpm_sclk_path):
+                    with open(dpm_sclk_path, "w") as f:
+                        f.write("1")
                 break
     except Exception:
         pass
 
-def apply_cpu_clock_profile():
-    """Lock CPU boost to 0 so CPU sits rock-solid at 2.10 GHz base, freeing ~12W package power for the GPU to stay at 950 MHz"""
+def enable_cpu_boost():
+    """Ensure CPU boost is enabled so cores dynamically boost to ~2.60 - 3.05 GHz"""
     try:
         boost_path = "/sys/devices/system/cpu/cpufreq/boost"
         if os.path.exists(boost_path):
             with open(boost_path, "w") as f:
-                f.write("0")
+                f.write("1")
     except Exception:
         pass
 
-# Initial power, GPU VRAM & CPU clock unlock
+# Initial power, GPU VRAM & CPU boost unlock
 apply_fast_ppt()
 apply_gpu_vram_pin()
-apply_cpu_clock_profile()
+enable_cpu_boost()
 last_power_time = time.time()
 
 running = True
@@ -174,7 +176,7 @@ try:
             if now - last_power_time >= 3.0:
                 apply_fast_ppt()
                 apply_gpu_vram_pin()
-                apply_cpu_clock_profile()
+                enable_cpu_boost()
                 last_power_time = now
 
             time.sleep(0.02)   # 20ms loop (50 Hz) - Fast enough to avoid any SMBus collision while keeping IRQ 9 CPU low (<2%)

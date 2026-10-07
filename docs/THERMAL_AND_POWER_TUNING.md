@@ -91,9 +91,11 @@ The Huawei MateBook D motherboard's VRM controller / PWM circuitry features a ha
 * **Option B (38W Fast PPT):** Even with 75A requested from SMU, transient 38W bursts force the VRMs past their physical OCP threshold, latching the hardware PROCHOT pin LOW and stalling the APU at 400 MHz for 86% of the time.
 * **Option A (35W Flat Fast PPT):** Keeping Fast PPT identical to Slow PPT (`--fast-limit=35000` = `--slow-limit=35000`) completely prevents overshoot, keeping current strictly within the VRM's continuous delivery envelope. This delivers **0 throttle drops**, completely smooth 24/7 operation, and peak multi-core compute throughput.
 
-### E. GPU-Biased Compute Profile (GPU @ ~950 MHz, CPU @ 2.10 GHz Base)
+### E. Alternative Profile: GPU-Biased Compute (GPU @ ~950 MHz, CPU @ 2.10 GHz Base)
 
-For workloads heavily reliant on GPU compute (e.g., PrimeGrid Genefer19 OpenCL + Frigate NVR VA-API decoding), the monolithic APU power budget can be strategically partitioned:
+> [!NOTE]
+> The active default profile in [`ec_voltage_patcher.py`](file:///home/manupa/18650_battery_mod/ec_voltage_patcher.py) is **Option A (Balanced 35W)**: CPU turbo boosting dynamically at **~2.75 – 2.85 GHz**, GPU at **~700 – 750 MHz (State 1)**, and VRAM pinned at **1,200 MHz (State 3)**.
+> If your workload is primarily GPU-bound, you can optionally switch to the GPU-biased profile below.
 
 #### 1. The Monolithic 35W Power Trade-Off
 On AMD Picasso 12nm, the CPU cores and Vega 8 iGPU share the same package power envelope:
