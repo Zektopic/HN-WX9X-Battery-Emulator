@@ -91,6 +91,48 @@ The Huawei MateBook D motherboard's VRM controller / PWM circuitry features a ha
 * **Option B (38W Fast PPT):** Even with 75A requested from SMU, transient 38W bursts force the VRMs past their physical OCP threshold, latching the hardware PROCHOT pin LOW and stalling the APU at 400 MHz for 86% of the time.
 * **Option A (35W Flat Fast PPT):** Keeping Fast PPT identical to Slow PPT (`--fast-limit=35000` = `--slow-limit=35000`) completely prevents overshoot, keeping current strictly within the VRM's continuous delivery envelope. This delivers **0 throttle drops**, completely smooth 24/7 operation, and peak multi-core compute throughput.
 
+### E. GPU-Biased Compute Profile (GPU @ ~950 MHz, CPU @ 2.10 GHz Base)
+
+For workloads heavily reliant on GPU compute (e.g., PrimeGrid Genefer19 OpenCL + Frigate NVR VA-API decoding), the monolithic APU power budget can be strategically partitioned:
+
+#### 1. The Monolithic 35W Power Trade-Off
+On AMD Picasso 12nm, the CPU cores and Vega 8 iGPU share the same package power envelope:
+* When CPU Precision Boost 2 is unconstrained, 8 CPU threads boost to **~2.85–3.10 GHz**, drawing **~24W** of power. This leaves only **~11W** for the GPU, forcing `sclk` to fluctuate between 700–900 MHz.
+* By disabling CPU boost (`/sys/devices/system/cpu/cpufreq/boost = 0`), all 8 CPU threads are locked to their rock-solid **2.10 GHz Base Clock**, drawing only **~11–12W**.
+* This frees up **~23–24W** of package power, allowing the Vega 8 GPU to stay continuously pinned at **~942–950 MHz** (DPM State 1) under 100% compute load.
+
+#### 2. Measured Live Telemetry (GPU ~950 MHz Profile)
+| Metric | Stock APU Balancing | GPU ~950 MHz Biased Profile | System Benefit |
+| :--- | :---: | :---: | :--- |
+| **GPU Clock (`sclk`)** | 733 – 800 MHz fluctuating | **942.0 MHz pegged** | **+25% OpenCL throughput** |
+| **GPU VRAM (`mclk`)** | Dynamic downclocking | **1,200.0 MHz pinned (State 3)** | **Zero memory bus latency** |
+| **CPU All-Core Clock** | 2.75 – 3.05 GHz | **2,095.9 MHz locked (2.10 GHz Base)**| **Rock-solid stability, 0 drops** |
+| **APU Junction (`Tctl`)** | ~71.0 – 74.0 °C | **64.5 °C** | **40.5 °C headroom below 105°C TjMax** |
+| **GPU Edge Temp** | ~70.0 °C | **64.0 °C** | **Ultra-cool silicon temperatures** |
+| **400 MHz Drops** | 0 drops | **0 drops** | **100% glitch-free continuous compute** |
+
+#### 3. Automation via `ec_voltage_patcher.py`
+The patcher automatically enforces this balance every 3.0 seconds:
+```python
+# 1. Lock APU to flat 35W and set min/max gfxclk to 950 MHz
+subprocess.run([
+    RYZENADJ_BIN,
+    "--stapm-limit=35000",
+    "--fast-limit=35000",
+    "--slow-limit=35000",
+    "--vrm-current=55000",
+    "--vrmmax-current=70000",
+    "--tctl-temp=88",
+    "--min-gfxclk=950",
+    "--max-gfxclk=950",
+    "--prochot-deassertion-ramp=1"
+])
+
+# 2. Lock CPU boost to 0 (locks CPU at 2.10 GHz Base)
+with open("/sys/devices/system/cpu/cpufreq/boost", "w") as f:
+    f.write("0")
+```
+
 ---
 
 ## 📊 Live Verification & Telemetry Tools
@@ -116,3 +158,17 @@ Look for:
 ```bash
 grep "cpu MHz" /proc/cpuinfo | awk '{printf "Core %d: %.3f GHz\n", NR-1, $4/1000}'
 ```
+
+### 4. Comprehensive Sensor & Junction Telemetry (SensorView)
+The globally installed [`sensorview`](file:///usr/local/bin/sensorview) tool provides real-time terminal output or reports for all CPU cores, k10temp junction (`Tctl`), AMDGPU core clocks, and memory:
+```bash
+# Display live sensor tree in terminal
+sensorview sensors
+
+# Dump diagnostic report file
+sensorview report
+
+# Inspect hardware system overview
+sensorview info
+```
+

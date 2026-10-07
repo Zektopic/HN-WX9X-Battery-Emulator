@@ -70,7 +70,7 @@ btem_bytes = struct.pack("<H", 2980)   # 0x9A: Temperature (25 C)
 RYZENADJ_BIN = "/usr/local/bin/ryzenadj"
 
 def apply_fast_ppt():
-    """Apply Option A: steady 35W sustained profile (eliminates 38W overshoot) with 70A EDC"""
+    """Apply 35W sustained profile with GPU pegged at ~950 MHz and CPU stabilized at base clock"""
     if not os.path.exists(RYZENADJ_BIN):
         return
     try:
@@ -84,6 +84,8 @@ def apply_fast_ppt():
             "--vrmsoc-current=14000",
             "--vrmsocmax-current=18000",
             "--tctl-temp=88",
+            "--min-gfxclk=950",
+            "--max-gfxclk=950",
             "--prochot-deassertion-ramp=1"
         ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=2)
     except Exception:
@@ -104,9 +106,20 @@ def apply_gpu_vram_pin():
     except Exception:
         pass
 
-# Initial power & GPU VRAM unlock
+def apply_cpu_clock_profile():
+    """Lock CPU boost to 0 so CPU sits rock-solid at 2.10 GHz base, freeing ~12W package power for the GPU to stay at 950 MHz"""
+    try:
+        boost_path = "/sys/devices/system/cpu/cpufreq/boost"
+        if os.path.exists(boost_path):
+            with open(boost_path, "w") as f:
+                f.write("0")
+    except Exception:
+        pass
+
+# Initial power, GPU VRAM & CPU clock unlock
 apply_fast_ppt()
 apply_gpu_vram_pin()
+apply_cpu_clock_profile()
 last_power_time = time.time()
 
 running = True
@@ -161,6 +174,7 @@ try:
             if now - last_power_time >= 3.0:
                 apply_fast_ppt()
                 apply_gpu_vram_pin()
+                apply_cpu_clock_profile()
                 last_power_time = now
 
             time.sleep(0.02)   # 20ms loop (50 Hz) - Fast enough to avoid any SMBus collision while keeping IRQ 9 CPU low (<2%)
